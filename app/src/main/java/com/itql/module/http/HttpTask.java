@@ -9,13 +9,19 @@ public class HttpTask {
     private Map<String, Object> mPostParamMap;
     private String mRawData;
     private Object mTag;
+    private String mSign;
 
     public HttpTask(Builder builder) {
         mUrl = builder.mUrl;
         mGetParamMap = builder.mGetParamMap;
         mPostParamMap = builder.mPostParamMap;
-        mRawData = builder.mRawData;
+        if (builder.mRawData != null && builder.mRawData.length() > 0) {
+            mRawData = JsonUtil.beanToJson(builder.mRawBean);
+        } else {
+            mRawData = builder.mRawData;
+        }
         mTag = builder.mTag;
+        mSign = builder.mSign;
     }
 
     public String getUrl() {
@@ -42,16 +48,36 @@ public class HttpTask {
         mTag = tag;
     }
 
+    public String getSign() {
+        return mSign;
+    }
+
+    public void setSign(String sign) {
+        mSign = sign;
+    }
+
     public static class Builder {
         private String mUrl;
         private Map<String, Object> mGetParamMap;
         private Map<String, Object> mPostParamMap;
         private String mRawData;
+        private Object mRawBean;
         private Object mTag;
+        private String mSign;
+
+        public Builder() {
+
+        }
 
         public Builder(String url) {
             mUrl = url;
         }
+
+        public Builder setUrl(String url) {
+            mUrl = url;
+            return this;
+        }
+
 
         public Builder setGetParam(Map<String, Object> map) {
             mGetParamMap = map;

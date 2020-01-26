@@ -96,9 +96,9 @@ public final class HttpLogIntercept implements Interceptor {
 
         Connection connection = chain.connection();
         String requestStartMessage = "--> "
-                + request.method()
-                + ' ' + request.url()
-                + (connection != null ? " " + connection.protocol() : "");
+            + request.method()
+            + ' ' + request.url()
+            + (connection != null ? " " + connection.protocol() : "");
         if (!logHeaders && hasRequestBody) {
             requestStartMessage += " (" + requestBody.contentLength() + "-byte body)";
         }
@@ -143,10 +143,10 @@ public final class HttpLogIntercept implements Interceptor {
                 if (isPlaintext(buffer)) {
                     logger.log(buffer.readString(charset));
                     logger.log("--> END " + request.method()
-                            + " (" + requestBody.contentLength() + "-byte body)");
+                        + " (" + requestBody.contentLength() + "-byte body)");
                 } else {
                     logger.log("--> END " + request.method() + " (binary "
-                            + requestBody.contentLength() + "-byte body omitted)");
+                        + requestBody.contentLength() + "-byte body omitted)");
                 }
             }
         }
@@ -165,10 +165,10 @@ public final class HttpLogIntercept implements Interceptor {
         long contentLength = responseBody.contentLength();
         String bodySize = contentLength != -1 ? contentLength + "-byte" : "unknown-length";
         logger.log("<-- "
-                + response.code()
-                + (response.message().isEmpty() ? "" : ' ' + response.message())
-                + ' ' + response.request().url()
-                + " (" + tookMs + "ms" + (!logHeaders ? ", " + bodySize + " body" : "") + ')');
+            + response.code()
+            + (response.message().isEmpty() ? "" : ' ' + response.message())
+            + ' ' + response.request().url()
+            + " (" + tookMs + "ms" + (!logHeaders ? ", " + bodySize + " body" : "") + ')');
 
         if (logHeaders) {
             Headers headers = response.headers();
@@ -219,7 +219,7 @@ public final class HttpLogIntercept implements Interceptor {
 
                 if (gzippedLength != null) {
                     logger.log("<-- END HTTP (" + buffer.size() + "-byte, "
-                            + gzippedLength + "-gzipped-byte body)");
+                        + gzippedLength + "-gzipped-byte body)");
                 } else {
                     logger.log("<-- END HTTP (" + buffer.size() + "-byte body)");
                 }
@@ -232,8 +232,8 @@ public final class HttpLogIntercept implements Interceptor {
     private boolean bodyHasUnknownEncoding(Headers headers) {
         String contentEncoding = headers.get("Content-Encoding");
         return contentEncoding != null
-                && !contentEncoding.equalsIgnoreCase("identity")
-                && !contentEncoding.equalsIgnoreCase("gzip");
+            && !contentEncoding.equalsIgnoreCase("identity")
+            && !contentEncoding.equalsIgnoreCase("gzip");
     }
 
     public enum Level {
@@ -301,7 +301,7 @@ public final class HttpLogIntercept implements Interceptor {
         Logger DEFAULT = new Logger() {
             @Override
             public void log(String message) {
-                Platform.get().log(INFO, message, null);
+                Platform.get().log(message, INFO, null);
             }
         };
 

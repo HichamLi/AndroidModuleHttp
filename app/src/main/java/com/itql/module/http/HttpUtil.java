@@ -1,6 +1,7 @@
 package com.itql.module.http;
 
-import androidx.annotation.NonNull;
+import android.text.TextUtils;
+import android.util.Log;
 
 import com.itql.module.http.callback.IHttpCallback;
 import com.itql.module.http.callback.IProgressCallback;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import androidx.annotation.NonNull;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.FormBody;
@@ -30,36 +32,49 @@ import okio.Okio;
 import okio.Source;
 
 public class HttpUtil {
-    public static boolean sDebug = false;
+    private static final String TAG = "HttpUtil";
 
     private static final class OkHttpClientHolder {
         private static final OkHttpClient INSTANCE;
 
         static {
+            HttpLogIntercept httpLogIntercept = new HttpLogIntercept(new HttpLogIntercept.Logger() {
+                @Override
+                public void log(String message) {
+                    Log.i(TAG, message);
+                }
+            }).setLevel(HttpLogIntercept.Level.BODY);
             OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                    .connectTimeout(30, TimeUnit.SECONDS)
-                    .readTimeout(30, TimeUnit.SECONDS)
-                    .writeTimeout(30, TimeUnit.SECONDS);
-            if (sDebug) {
-                builder.addInterceptor(new HttpLogIntercept().setLevel(HttpLogIntercept.Level.BODY));
-            }
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .addInterceptor(httpLogIntercept);
             INSTANCE = builder.build();
         }
     }
 
     private static final class LongOkHttpClientHolder {
         private static final OkHttpClient INSTANCE;
+        private static HttpLogIntercept sHttpLogIntercept;
 
         static {
+            sHttpLogIntercept = new HttpLogIntercept(new HttpLogIntercept.Logger() {
+                @Override
+                public void log(String message) {
+                    Log.i(TAG, message);
+                }
+            }).setLevel(HttpLogIntercept.Level.HEADERS);
             OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                    .connectTimeout(30, TimeUnit.SECONDS)
-                    .readTimeout(300, TimeUnit.SECONDS)
-                    .writeTimeout(300, TimeUnit.SECONDS);
-            if (sDebug) {
-                builder.addInterceptor(new HttpLogIntercept().setLevel(HttpLogIntercept.Level.HEADERS));
-            }
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(300, TimeUnit.SECONDS)
+                .writeTimeout(300, TimeUnit.SECONDS)
+                .addInterceptor(sHttpLogIntercept);
             INSTANCE = builder.build();
         }
+    }
+
+    public static void execute(HttpTask task) {
+        execute(task, null);
     }
 
     public static void execute(final HttpTask task, final IHttpCallback callback) {
@@ -103,25 +118,42 @@ public class HttpUtil {
                     }
                 });
             }
+            if (!TextUtils.isEmpty(task.getSign())) {
+                url.append(hasArg ? "&sign=" : "?sign=").append(task.getSign());
+            }
 
             builder.url(url.toString());
             final Call call = OkHttpClientHolder.INSTANCE.newCall(builder.build());
-            if (callback != null) callback.onStart(new HttpCall(call));
+            if (callback != null) {
+                callback.onStart(new HttpCall(call, task.getTag()));
+            }
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull final IOException e) {
-                    if (callback != null) callback.onError(e);
+                    if (!call.isCanceled()) call.cancel();
+                    if (callback != null) {
+                        callback.onError(e);
+                    }
                 }
 
                 @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    if (callback != null && response.body() != null) {
-                        callback.onSuccess(response.body().string());
+                public void onResponse(@NonNull Call call, @NonNull Response response) {
+                    try {
+                        if (callback != null && response.body() != null) {
+                            String s = response.body().string();
+                            try {
+                                callback.onSuccess(s);
+                            } catch (Exception e) {
+                                Log.e(TAG, e.toString());
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, e.toString());
                     }
                 }
             });
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, e.toString());
             if (callback != null) callback.onError(e);
         }
     }
@@ -148,24 +180,33 @@ public class HttpUtil {
 
             List<File> files = task.getFiles();
             if (files != null) {
+//                File file=files.get(0);
+//                if (file != null) {
+//                    builder.addFormDataPart("file", file.getName(), RequestBody.create(MediaType.parse("multipart/otcet-stream"), file));
+//                }
                 for (int i = 0, n = files.size(); i < n; i++) {
                     builder.addFormDataPart("file" + i, files.get(i).getName(), RequestBody.create(MediaType.parse("multipart/otcet-stream"), files.get(i)));
                 }
             }
 
             RequestBody requestBody = builder.build();
-            final Request request = new Request.Builder().url(task.getUrl())
-                    .post(new ProgressRequestBody(requestBody, upload))
-                    .tag(UUID.randomUUID().toString())
-                    .build();
+            Request.Builder rBuilder = new Request.Builder();
+            if (task.getTag() == null) {
+                task.setTag(UUID.randomUUID().toString());
+            }
+            final Request request = rBuilder.url(task.getUrl())
+                .post(new ProgressRequestBody(requestBody, upload))
+                .tag(task.getTag())
+                .build();
             final Call call = LongOkHttpClientHolder.INSTANCE.newCall(request);
             if (callback != null) {
-                callback.onStart(new HttpCall(call));
+                callback.onStart(new HttpCall(call, task.getTag()));
             }
 
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull final IOException e) {
+                    if (!call.isCanceled()) call.cancel();
                     if (callback != null) {
                         callback.onError(e);
                     }
@@ -182,7 +223,7 @@ public class HttpUtil {
                 }
             });
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, e.toString());
             if (callback != null) callback.onError(e);
         }
     }
@@ -197,24 +238,26 @@ public class HttpUtil {
             };
 
             OkHttpClient.Builder builder = new OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS)
-                    .writeTimeout(0, TimeUnit.SECONDS)
-                    .readTimeout(0, TimeUnit.SECONDS)
-                    .addNetworkInterceptor(new Interceptor() {
-                        @NonNull
-                        @Override
-                        public Response intercept(@NonNull Chain chain) throws IOException {
-                            Response originalResponse = chain.proceed(chain.request());
-                            return originalResponse.newBuilder()
-                                    .body(new ProgressResponseBody(originalResponse.body(), download))
-                                    .build();
-                        }
-                    });
-            Request request = new Request.Builder().url(url).build();
+                .writeTimeout(0, TimeUnit.SECONDS)
+                .readTimeout(0, TimeUnit.SECONDS)
+                .addNetworkInterceptor(new Interceptor() {
+                    @NonNull
+                    @Override
+                    public Response intercept(@NonNull Chain chain) throws IOException {
+                        Response originalResponse = chain.proceed(chain.request());
+                        return originalResponse.newBuilder()
+                            .body(new ProgressResponseBody(originalResponse.body(), download))
+                            .build();
+                    }
+                }).addInterceptor(LongOkHttpClientHolder.sHttpLogIntercept);
+            String tag = UUID.randomUUID().toString();
+            Request request = new Request.Builder().url(url).tag(tag).build();
             final Call call = builder.build().newCall(request);
-            if (callback != null) callback.onStart(new HttpCall(call));
+            if (callback != null) callback.onStart(new HttpCall(call, tag));
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull final IOException e) {
+                    if (!call.isCanceled()) call.cancel();
                     if (callback != null) callback.onError(e);
                 }
 
@@ -234,7 +277,7 @@ public class HttpUtil {
                 }
             });
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, e.toString());
             if (callback != null) callback.onError(e);
         }
     }
